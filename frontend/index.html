@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClipSave – ভিডিও ডাউনলোড</title>
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--ink:#16201b;--mute:#66726b;--line:#dfe4de;--accent:#0d7a5f;--accent-ink:#fff;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1512;--card:#17201b;--ink:#eaf1ec;--mute:#93a29a;--line:#27332c;--accent:#3ecf9e;--accent-ink:#06130e;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hind Siliguri","Noto Sans Bengali",system-ui,sans-serif;line-height:1.6}
+main{max-width:640px;margin:0 auto;padding:48px 16px 64px}
+h1{font-size:2rem;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--mute);margin:0 0 28px}
+.row{display:flex;gap:8px}
+input{flex:1;min-width:0;font:inherit;padding:14px 16px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink)}
+button,.btn{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:14px 20px;background:var(--accent);color:var(--accent-ink);font-weight:600;text-decoration:none;display:inline-block;text-align:center}
+button.ghost,.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);font-weight:500}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#msg{min-height:1.5em;margin:12px 0;color:var(--mute)}
+#msg.err{color:#d6453d}
+#result{display:none;background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+#result img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:var(--line)}
+.body{padding:16px}
+.body h2{font-size:1.05rem;margin:0 0 4px}
+.meta{color:var(--mute);font-size:.9rem;margin-bottom:14px}
+.quick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.grid{display:flex;flex-wrap:wrap;gap:8px}
+.grid .btn{padding:8px 14px;font-size:.9rem}
+.label{font-size:.85rem;color:var(--mute);margin:12px 0 6px}
+.ad{margin:16px 0;text-align:center}
+footer{margin-top:40px;color:var(--mute);font-size:.8rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>ClipSave</h1>
+  <p class="sub">লিংক পেস্ট করুন, পছন্দের কোয়ালিটিতে ডাউনলোড করুন। কোনো বিরক্তিকর অ্যাড নেই।</p>
+
+  <form class="row" id="f">
+    <input id="url" type="url" placeholder="YouTube, Facebook, TikTok লিংক..." required autocomplete="off" aria-label="ভিডিও লিংক">
+    <button class="ghost" type="button" id="paste">পেস্ট</button>
+    <button type="submit" id="go">খুঁজুন</button>
+  </form>
+  <div id="msg" role="status"></div>
+
+  <div id="adTop" class="ad"></div>
+
+  <section id="result">
+    <img id="thumb" alt="">
+    <div class="body">
+      <h2 id="title"></h2>
+      <div class="meta" id="meta"></div>
+      <div class="quick">
+        <a class="btn" id="best">সর্বোচ্চ কোয়ালিটি</a>
+        <a class="btn ghost" id="lowest">সর্বনিম্ন কোয়ালিটি</a>
+      </div>
+      <div class="label">অন্যান্য কোয়ালিটি</div>
+      <div class="grid" id="heights"></div>
+      <div class="label">শুধু অডিও</div>
+      <div class="grid"><a class="btn ghost" id="mp3">MP3</a></div>
+    </div>
+  </section>
+
+  <div id="adBottom" class="ad"></div>
+  <footer>শুধু নিজের বা অনুমতিপ্রাপ্ত কনটেন্ট ডাউনলোড করুন। কপিরাইটের দায় ব্যবহারকারীর।</footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const msg = (t, err) => { $("msg").textContent = t; $("msg").className = err ? "err" : ""; };
+const dur = s => s ? `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}` : "";
+
+// বিজ্ঞাপন: সার্ভার কনফিগে চালু থাকলেই বসবে (স্ক্রিপ্টও চলবে)
+function mountAd(el, html) {
+  if (!html) return;
+  el.innerHTML = html;
+  el.querySelectorAll("script").forEach(old => {
+    const s = document.createElement("script");
+    [...old.attributes].forEach(a => s.setAttribute(a.name, a.value));
+    s.textContent = old.textContent;
+    old.replaceWith(s);
+  });
+}
+fetch("/api/config").then(r => r.json()).then(c => {
+  if (c.ads.enabled) { mountAd($("adTop"), c.ads.top); mountAd($("adBottom"), c.ads.bottom); }
+}).catch(() => {});
+
+$("paste").onclick = async () => {
+  try { $("url").value = await navigator.clipboard.readText(); $("f").requestSubmit(); }
+  catch { msg("ক্লিপবোর্ডের অনুমতি নেই, হাতে পেস্ট করুন।", true); }
+};
+
+$("f").onsubmit = async e => {
+  e.preventDefault();
+  const url = $("url").value.trim();
+  $("result").style.display = "none";
+  msg("তথ্য আনা হচ্ছে..."); $("go").disabled = true;
+  try {
+    const r = await fetch("/api/info?url=" + encodeURIComponent(url));
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "সমস্যা হয়েছে");
+    const link = q => `/api/download?url=${encodeURIComponent(url)}&quality=${q}`;
+    $("thumb").src = d.thumbnail || ""; $("title").textContent = d.title;
+    $("meta").textContent = [d.uploader, dur(d.duration)].filter(Boolean).join(" • ");
+    $("best").href = link("best"); $("lowest").href = link("lowest"); $("mp3").href = link("mp3");
+    $("heights").innerHTML = "";
+    d.heights.forEach(h => { const a = document.createElement("a"); a.className = "btn ghost"; a.href = link(h); a.textContent = h + "p"; $("heights").append(a); });
+    $("result").style.display = "block"; msg("");
+  } catch (err) { msg(err.message, true); }
+  $("go").disabled = false;
+};
+
+document.addEventListener("click", e => {
+  if (e.target.closest("a.btn[href*='/api/download']")) msg("প্রসেস হচ্ছে, ডাউনলোড শুরু হতে কয়েক সেকেন্ড লাগতে পারে...");
+});
+</script>
+</body>
+</html>
