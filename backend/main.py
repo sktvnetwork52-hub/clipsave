@@ -15,6 +15,17 @@ app = FastAPI(title="ClipSave")
 jobs = threading.Semaphore(C.MAX_PARALLEL_DOWNLOADS)
 hits: dict[str, deque] = defaultdict(deque)
 
+# Cookies file may live on a read-only mount (e.g. Render secret files) while
+# yt-dlp needs to write session cookies back — work from a writable copy.
+_cookie_path = C.COOKIES_FILE
+if _cookie_path and os.path.exists(_cookie_path):
+    try:
+        _dest = os.path.join(tempfile.gettempdir(), "cookies.txt")
+        shutil.copyfile(_cookie_path, _dest)
+        _cookie_path = _dest
+    except OSError:
+        pass
+
 
 def guard(request: Request, url: str):
     """রেট-লিমিট + URL যাচাই (অনুমোদিত সাইট ছাড়া অন্য কিছু ফেচ করবে না)।"""
@@ -41,7 +52,7 @@ def reason(e: Exception) -> str:
 def base_opts():
     o = {"quiet": True, "noplaylist": True, "no_warnings": True}
     if C.PROXY: o["proxy"] = C.PROXY
-    if C.COOKIES_FILE: o["cookiefile"] = C.COOKIES_FILE
+    if _cookie_path: o["cookiefile"] = _cookie_path
     return o
 
 
